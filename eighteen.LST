@@ -1,0 +1,981 @@
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE EIGHTEEN
+OBJECT MODULE PLACED IN eighteen.OBJ
+COMPILER INVOKED BY: c:\Keil\C51\BIN\C51.EXE eighteen.c BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include <intrins.h> 
+   2          #include <REG51.h>                                                       
+   3          #define uchar unsigned char
+   4          #define uint unsigned int
+   5          
+   6          /*Declare SFR associated with the IAP */
+   7          sfr IAP_DATA = 0xC2; //Flash data register
+   8          sfr IAP_ADDRH = 0xC3; //Flash address HIGH
+   9          sfr IAP_ADDRL = 0xC4; //Flash address LOW
+  10          sfr IAP_CMD = 0xC5; //Flash command register
+  11          sfr IAP_TRIG = 0xC6; //Flash command trigger
+  12          sfr IAP_CONTR = 0xC7; //Flash control register
+  13          sfr P0M0        =   0x94;   //0000,0000 ¶Ë¿Ú0Ä£Ê½¼Ä´æÆ÷0
+  14          sfr P0M1        =   0x93;   //0000,0000 ¶Ë¿Ú0Ä£Ê½¼Ä´æÆ÷1
+  15          sfr P1M0        =   0x92;   //0000,0000 ¶Ë¿Ú1Ä£Ê½¼Ä´æÆ÷0
+  16          sfr P1M1        =   0x91;   //0000,0000 ¶Ë¿Ú1Ä£Ê½¼Ä´æÆ÷1
+  17          sfr P3M0        =   0xB2;   //0000,0000 ¶Ë¿Ú3Ä£Ê½¼Ä´æÆ÷0
+  18          sfr P3M1        =   0xB1;   //0000,0000 ¶Ë¿Ú3Ä£Ê½¼Ä´æÆ÷1
+  19          /*Define ISP/IAP/EEPROM command*/
+  20          #define CMD_IDLE 0 //Stand-By
+  21          #define CMD_READ 1 //Byte-Read
+  22          #define CMD_PROGRAM 2 //Byte-Program
+  23          #define CMD_ERASE 3 //Sector-Erase
+  24          #define ENABLE_IAP 0x82 //if SYSCLK<20MHz
+  25          #define IAP_ADDRESS 0x0000
+  26          #define  PORTD  P3  
+  27          
+  28          void IapIdle();
+  29          uchar IapReadByte(uint addr);
+  30          void IapProgramByte(uint addr, uchar dat);
+  31          void IapEraseSector(uint addr);
+  32          
+  33          sbit wei1=P0^1; 
+  34          sbit wei2=P1^0; 
+  35          sbit wei3=P1^1; 
+  36          sbit IN1=P1^2; 
+  37          sbit k1=P1^3; 
+  38          sbit k2=P1^4; 
+  39          sbit k3=P1^5;
+  40          sbit OUT=P0^0; 
+  41          bit GNselect;
+  42          uchar GN;
+  43          uchar CN;
+  44          uint ms05;
+  45          uint dingshi;
+  46          bit fenshan;
+  47          uint  GNT[28];
+  48          uint CycleNum[2];
+  49          uint CycleN;
+  50          bit yanshi;
+  51          bit biaozhi,xianshi;
+  52          bit flag;
+  53          bit flag1;
+  54          bit flag5;
+  55          bit GNchanged;
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 2   
+
+  56          bit ShanShou;
+  57          bit init;
+  58          bit visionflag;   //°æ±¾¡®·Ö¡¯£¬¡®Ãë¡¯±êÖ¾
+  59          bit on;
+  60          bit flag_17;
+  61          bit flag_17_1;
+  62          bit biaozhi1;
+  63          uchar off;
+  64          uchar vision;
+  65          uchar Key_Num;
+  66          uchar flag4;
+  67          uchar NUM;
+  68          uchar LED=1;
+  69          uchar i; 
+  70          void Write();
+  71          void keystate();
+  72          void  saomiao();
+  73          void Key();
+  74          void delay(uint z);
+  75          void temptoseg();
+  76          void GNseparate();
+  77          void separate();
+  78          void outfuction();
+  79          uchar  display_data[3];
+  80          uchar ledcode[]={0x84,0xb7,0x2c,0x25,0x17,0x45,0x44,0xa7,0x04,0x05,0x5c,0x76,0x06,0x54};  //0-9,t,n,a,b
+  81          
+  82          //*********************************************************
+  83          
+  84           void main()
+  85          {     
+  86   1         init=IapReadByte(IAP_ADDRESS+121);
+  87   1         if(init)       //eepromÎª¿Õ,³õÊ¼»¯
+  88   1         {
+  89   2         for(i=0;i<28;i++)
+  90   2          GNT[i]=10;  
+  91   2         GN=0;
+  92   2         CN=0;
+  93   2         on=0;
+  94   2         vision=0;
+  95   2           CycleNum[0]=10;
+  96   2         CycleNum[1]=10;
+  97   2         Write();     
+  98   2          }
+  99   1          else
+ 100   1        {
+ 101   2          for (i=0; i<56; i++) 
+ 102   2              {
+ 103   3                GNT[i/2]=IapReadByte(IAP_ADDRESS+i)<<8|IapReadByte(IAP_ADDRESS+i+1);
+ 104   3                i++;
+ 105   3              } 
+ 106   2              GN=IapReadByte(IAP_ADDRESS+120);
+ 107   2              CycleNum[0]=IapReadByte(IAP_ADDRESS+122)<<8|IapReadByte(IAP_ADDRESS+123);
+ 108   2              CycleNum[1]=IapReadByte(IAP_ADDRESS+124)<<8|IapReadByte(IAP_ADDRESS+125);
+ 109   2              vision=IapReadByte(IAP_ADDRESS+126);
+ 110   2              on=IapReadByte(IAP_ADDRESS+127);
+ 111   2              if(GN==6||GN==7)
+ 112   2                 CN=GN-6;
+ 113   2           }                                  
+ 114   1             P0M0=0x01;
+ 115   1             P3M0=0Xff;     
+ 116   1                TMOD=0x11;//¹¤×÷Ä£Ê½ÉèÖÃ
+ 117   1              EA=1;
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 3   
+
+ 118   1            TR0=1;
+ 119   1            ET0=1;
+ 120   1            TH0=(65536-50000)/256;
+ 121   1            TL0=(65536-50000)%256;
+ 122   1            dingshi=GNT[GN];
+ 123   1            biaozhi=1;
+ 124   1            if(GN>7)
+ 125   1            {
+ 126   2              OUT=0;
+ 127   2              biaozhi=0;
+ 128   2            }else
+ 129   1                OUT=(GN+1)%2;
+ 130   1       while(1)
+ 131   1        { 
+ 132   2         uchar k,g;     
+ 133   2         k++;
+ 134   2         if(k>=20)
+ 135   2           {
+ 136   3          k=0;
+ 137   3          xianshi=!xianshi;    //ÐÞ¸ÄÊ±Êý×ÖÉÁË¸
+ 138   3         }
+ 139   2         if(((GN>7&&biaozhi)||GN<8)&&dingshi>0&&vision){
+ 140   3         g++;
+ 141   3         if(g>=100){
+ 142   4          g=0;
+ 143   4          fenshan=!fenshan;
+ 144   4         }
+ 145   3         }
+ 146   2           Key();
+ 147   2         temptoseg();
+ 148   2         saomiao();    
+ 149   2         if(GN==16)//¹¦ÄÜ17
+ 150   2         {
+ 151   3            if(flag_17_1==0&&IN1==0)     //¹¦ÄÜ17
+ 152   3            {
+ 153   4              biaozhi1=!biaozhi1;
+ 154   4             OUT=biaozhi1;
+ 155   4              flag_17_1=1;
+ 156   4            }
+ 157   3            if(IN1==1)
+ 158   3            flag_17_1=0;
+ 159   3            if((k2==0)&&(flag_17==0)) 
+ 160   3          {
+ 161   4             biaozhi1=!biaozhi1;
+ 162   4             OUT=biaozhi1;
+ 163   4              flag_17=1;
+ 164   4          }
+ 165   3          if(k2==1)
+ 166   3          flag_17=0;
+ 167   3         }
+ 168   2         else if(GN==8||GN==9||GN==12||GN==13)
+ 169   2         {
+ 170   3          if(biaozhi==0)     //ÑÓÊ±ÖÐ´¥·¢ÎÞÐ§
+ 171   3          if((IN1==0))
+ 172   3          {
+ 173   4             for(i=0;i<10;i++)
+ 174   4               saomiao();
+ 175   4             if(IN1==0)
+ 176   4            {      
+ 177   5               flag=0;  
+ 178   5               dingshi=GNT[GN];
+ 179   5               yanshi=0;
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 4   
+
+ 180   5               biaozhi=1;
+ 181   5               if(GN<12)
+ 182   5               OUT=(GN+1)%2;
+ 183   5               else
+ 184   5               OUT=GN%2;
+ 185   5               if(GNchanged)
+ 186   5               {
+ 187   6                 GNchanged=0;
+ 188   6                 Write();  
+ 189   6               }
+ 190   5            }
+ 191   4          }
+ 192   3        }else if((IN1==0))
+ 193   2        {
+ 194   3          for(i=0;i<10;i++)
+ 195   3               saomiao();
+ 196   3          if(IN1==0)
+ 197   3          {
+ 198   4             if(GN>23)
+ 199   4              {
+ 200   5                GN=GN-12;
+ 201   5              } 
+ 202   4              else if(GN>17)
+ 203   4              {
+ 204   5                GN=GN-16;
+ 205   5              }   
+ 206   4            if(GN!=17)    //¹¦ÄÜ18²»´¦Àí
+ 207   4            {
+ 208   5               if(GN==6||GN==7)   //¹¦ÄÜ7,8£»´¥·¢ºóÑ­»·´ÎÊýÇåÁã
+ 209   5               {
+ 210   6                  CycleN=0;
+ 211   6               }      
+ 212   5               dingshi=GNT[GN];
+ 213   5               yanshi=0;
+ 214   5               biaozhi=1;
+ 215   5               flag=0;
+ 216   5               if(GN<12)
+ 217   5               OUT=(GN+1)%2;
+ 218   5               else
+ 219   5               OUT=GN%2;
+ 220   5               if(GNchanged)
+ 221   5               {
+ 222   6                GNchanged=0;
+ 223   6                      Write(); 
+ 224   6               } 
+ 225   5            }
+ 226   4          }
+ 227   3          }
+ 228   2          
+ 229   2        }     
+ 230   1      }
+ 231          
+ 232          
+ 233          void Key()
+ 234          {
+ 235   1        keystate();  
+ 236   1        if(yanshi==1&&(Key_Num==0))
+ 237   1        { 
+ 238   2           if(k3==0)// ¼Ó¼ü¼ì²â
+ 239   2           {
+ 240   3             for(i=0;i<10;i++)
+ 241   3               saomiao();      
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 5   
+
+ 242   3             if(k3==0)
+ 243   3             {
+ 244   4             flag1=1;
+ 245   4             GNselect=1;        
+ 246   4             NUM++;
+ 247   4             if(NUM==10)
+ 248   4               NUM=0; 
+ 249   4             if(flag5==1)  //ÏÔÊ¾Ñ­»·´ÎÊý
+ 250   4             {
+ 251   5                switch(LED)
+ 252   5               {
+ 253   6                  case 1:
+ 254   6                           CycleNum[CN]=NUM*100+CycleNum[CN]%100;
+ 255   6                       break;
+ 256   6                case 2:
+ 257   6                       CycleNum[CN]=NUM*10+(CycleNum[CN]/100)*100+CycleNum[CN]%10;
+ 258   6                       break;
+ 259   6                case 3:
+ 260   6                       CycleNum[CN]=NUM+CycleNum[CN]-CycleNum[CN]%10;
+ 261   6                       break;
+ 262   6                  default:
+ 263   6                           break;
+ 264   6              } 
+ 265   5             }else     //ÏÔÊ¾Ê±¼ä
+ 266   4             {  
+ 267   5              switch(LED)
+ 268   5               {
+ 269   6                  case 1:
+ 270   6                           GNT[GN]=NUM*100+GNT[GN]%100;
+ 271   6                       break;
+ 272   6                case 2:
+ 273   6                       GNT[GN]=NUM*10+(GNT[GN]/100)*100+GNT[GN]%10;
+ 274   6                       break;
+ 275   6                case 3:
+ 276   6                       GNT[GN]=NUM+GNT[GN]-GNT[GN]%10;
+ 277   6                       break;
+ 278   6                  default:
+ 279   6                           break;
+ 280   6              }
+ 281   5            }                   
+ 282   4          }         
+ 283   3        }
+ 284   2           if(k2==0)//    ÊýÂë¹ÜÑ¡Ôñ¼ü¼ì²â
+ 285   2           {
+ 286   3            for(i=0;i<10;i++)
+ 287   3            saomiao();            
+ 288   3            if(k2==0)
+ 289   3            {
+ 290   4              GNselect=1;
+ 291   4              flag1=1;
+ 292   4              LED++; 
+ 293   4            if(LED==4)
+ 294   4              LED=1;
+ 295   4            if(flag5==1)  //ÏÔÊ¾Ñ­»·´ÎÊý
+ 296   4            {
+ 297   5              switch(LED)
+ 298   5               {
+ 299   6                  case 1:
+ 300   6                           NUM=CycleNum[CN]/100;
+ 301   6                       break;
+ 302   6                case 2:
+ 303   6                       NUM=CycleNum[CN]%100/10;
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 6   
+
+ 304   6                       break;
+ 305   6                case 3:
+ 306   6                       NUM=CycleNum[CN]%10;
+ 307   6                       break;
+ 308   6                  default:
+ 309   6                           break;
+ 310   6              } 
+ 311   5            }else      //ÏÔÊ¾Ê±¼ä
+ 312   4            {
+ 313   5            switch(LED)
+ 314   5               {
+ 315   6                  case 1:
+ 316   6                           NUM=GNT[GN]/100;
+ 317   6                       break;
+ 318   6                case 2:
+ 319   6                       NUM=GNT[GN]%100/10;
+ 320   6                       break;
+ 321   6                case 3:
+ 322   6                         NUM=GNT[GN]%10;
+ 323   6                         break;
+ 324   6                  default:
+ 325   6                           break;
+ 326   6              }
+ 327   5             }    
+ 328   4             }
+ 329   3          }
+ 330   2        }     
+ 331   1      }
+ 332          
+ 333           void temptoseg()
+ 334           {  
+ 335   1          if(Key_Num==2)
+ 336   1         {
+ 337   2             display_data[0]=0xff;
+ 338   2           display_data[1]=0xff;
+ 339   2           display_data[2]=ledcode[vision+12];
+ 340   2         }
+ 341   1          else if(yanshi)
+ 342   1         {
+ 343   2           if(GNselect==0)
+ 344   2         {
+ 345   3           if(Key_Num==0)
+ 346   3           {
+ 347   4           if(flag5==1)      //ÏÔÊ¾¹¦ÄÜÑ­»·´ÎÊý
+ 348   4           {     
+ 349   5             display_data[0]=0xff;
+ 350   5             display_data[1]=0xff;
+ 351   5             display_data[2]=ledcode[11];
+ 352   5            }
+ 353   4            else if(GN==0||GN==1||(GN>7&&GN<12))     //Ö»ÓÐÒ»¸öÊ±¼ä
+ 354   4            {  
+ 355   5              display_data[0] =0xff;
+ 356   5                display_data[1] = ledcode[10];
+ 357   5              display_data[2] = 0xff;       
+ 358   5            }
+ 359   4            else if(GN>17)    //T2
+ 360   4            {          
+ 361   5              display_data[0]=0xff;
+ 362   5              display_data[1]=ledcode[10];
+ 363   5              display_data[2]=ledcode[2];   
+ 364   5            }
+ 365   4            else if(GN<16)  //T1
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 7   
+
+ 366   4            {      
+ 367   5              display_data[0]=0xff;
+ 368   5              display_data[1]=ledcode[10];
+ 369   5              display_data[2]=ledcode[1];
+ 370   5            }
+ 371   4          }
+ 372   3          else
+ 373   3          {
+ 374   4            GNseparate(); 
+ 375   4          }                     
+ 376   3          }
+ 377   2            else
+ 378   2          {
+ 379   3          if(flag5)
+ 380   3            dingshi=CycleNum[CN];
+ 381   3          else
+ 382   3            dingshi=GNT[GN];
+ 383   3      
+ 384   3          if(!ShanShou)
+ 385   3          {
+ 386   4          if(xianshi)
+ 387   4          {
+ 388   5            display_data[LED-1] = 0xff;  //Ñ¡ÔñµÄÊýÂë¹ÜÉÁË¸
+ 389   5          }
+ 390   4          else
+ 391   4          {                 
+ 392   5            separate(); 
+ 393   5          }
+ 394   4           }
+ 395   3          }
+ 396   2        }
+ 397   1        else
+ 398   1        {
+ 399   2         if(GN==16||GN==17)
+ 400   2         {
+ 401   3           GNseparate();
+ 402   3         }
+ 403   2         else
+ 404   2         {
+ 405   3          separate();
+ 406   3         }
+ 407   2        }                       
+ 408   1       }
+ 409          //*********************************************************
+ 410          
+ 411          void timer0() interrupt 1  //¶¨Ê±Æ÷0ÖÐ¶Ï£¬¸ÃÖÐ¶ÏÍê³ÉÊýÂë¹ÜµÄ¶¯Ì¬É¨Ãè
+ 412           { 
+ 413   1           TH0=(65536-50000)/256;
+ 414   1             TL0=(65536-50000)%256;      //Ã¿ÖÐ¶ÏÒ»´ÎµÄÊ±¼äÎª100ºÁÃë
+ 415   1      
+ 416   1          if(k2==0)
+ 417   1            off++;
+ 418   1          else
+ 419   1            off=0;
+ 420   1          if(off>=30){
+ 421   2            on=!on;
+ 422   2            off=0;
+ 423   2            Write(); 
+ 424   2          }
+ 425   1          if(GN==17&&IN1==0)     //¹¦ÄÜ18
+ 426   1          {
+ 427   2           OUT=1;
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 8   
+
+ 428   2          }
+ 429   1          else if(GN==17&&IN1==1)
+ 430   1          {
+ 431   2           OUT=0;
+ 432   2          }
+ 433   1          if(biaozhi)// ¿ª»ú×´Ì¬
+ 434   1          {
+ 435   2            
+ 436   2              ms05++;
+ 437   2            if(vision==1)
+ 438   2            {
+ 439   3             if(ms05>=600)
+ 440   3             {
+ 441   4             outfuction();
+ 442   4             }
+ 443   3            }else
+ 444   2          {
+ 445   3            if(ms05>=10)//1Ãë
+ 446   3            {
+ 447   4              outfuction();
+ 448   4            }
+ 449   3          }
+ 450   2          }
+ 451   1       } 
+ 452          
+ 453            void  saomiao()
+ 454               {
+ 455   1             if(on==0){
+ 456   2                  PORTD=~display_data[0];
+ 457   2            wei1=0;
+ 458   2              delay(3);
+ 459   2            wei1=1;
+ 460   2      
+ 461   2                  PORTD=~display_data[1];
+ 462   2            wei2=0;
+ 463   2              delay(3);
+ 464   2            wei2=1;
+ 465   2      
+ 466   2             if(vision&&yanshi==0&&fenshan){
+ 467   3             PORTD=~(display_data[2]&0Xfb); 
+ 468   3             }     
+ 469   2              else
+ 470   2                     PORTD=~display_data[2];
+ 471   2            wei3=0;
+ 472   2            delay(3);
+ 473   2            wei3=1;     
+ 474   2            }
+ 475   1          }
+ 476          
+ 477          void separate(){
+ 478   1                             if(dingshi<10)
+ 479   1                  {
+ 480   2                         display_data[0] = ledcode[0];
+ 481   2                               display_data[1] = ledcode[0];
+ 482   2                     display_data[2] = ledcode[dingshi%10];
+ 483   2                  }
+ 484   1                  else if(dingshi<100)
+ 485   1                  {
+ 486   2                         display_data[0] = ledcode[0];
+ 487   2                               display_data[1] = ledcode[dingshi/10%10];
+ 488   2                     display_data[2] = ledcode[dingshi%10];                
+ 489   2                  }
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 9   
+
+ 490   1                     else {
+ 491   2                     display_data[0] = ledcode[dingshi/100];
+ 492   2                             display_data[1] = ledcode[dingshi/10%10];
+ 493   2                     display_data[2] = ledcode[dingshi%10]; 
+ 494   2                     }              
+ 495   1      }   
+ 496            
+ 497            void GNseparate(){
+ 498   1                              dingshi=GN+1;
+ 499   1                            if(dingshi<10)
+ 500   1                  {
+ 501   2                         display_data[0] = 0xff;
+ 502   2                               display_data[1] = 0xff;
+ 503   2                     display_data[2] = ledcode[dingshi%10];
+ 504   2                  }
+ 505   1                  else if(dingshi<100)
+ 506   1                  {
+ 507   2                         display_data[0] = 0xff;
+ 508   2                               display_data[1] = ledcode[dingshi/10%10];
+ 509   2                     display_data[2] = ledcode[dingshi%10];                
+ 510   2                  }
+ 511   1                     else{
+ 512   2                     display_data[0] = ledcode[dingshi/100];
+ 513   2                             display_data[1] = ledcode[dingshi/10%10];
+ 514   2                     display_data[2] = ledcode[dingshi%10];
+ 515   2                     }  
+ 516   1            }
+ 517           void delay(uint z)//1MS ÑÓÊ±
+ 518          {
+ 519   1        unsigned char i, j;
+ 520   1      
+ 521   1        _nop_();
+ 522   1        _nop_();
+ 523   1        while(z--){
+ 524   2        i = 6;
+ 525   2        j = 210;
+ 526   2        do
+ 527   2        {
+ 528   3          while (--j);
+ 529   3        } while (--i);
+ 530   2        }
+ 531   1      }
+ 532          void keystate(){
+ 533   1         uchar nn=0;                                                    //¡°°´ÏÂ¡±Ê±³¤¼ÆÊýÆ÷ÇåÁã
+ 534   1         uchar mm=0;                                                    //¡°ÊÍ·Å¡±Ê±³¤¼ÆÊýÆ÷ÇåÁã
+ 535   1          if(k1==0)                //Èç°´¼üset0°´ÏÂ
+ 536   1          {
+ 537   2                delay(30);                                       //ÑÓÊ±£¨Ïû¶¶£©
+ 538   2                if(k1==0)              //Èç°´¼üset0°´ÏÂ
+ 539   2          {
+ 540   3                     do{                                           //¡°°´ÏÂ¡±¼ÆÊýÆ÷¿ªÊ¼¼ÆÊý
+ 541   4                            nn++;
+ 542   4                            delay(10);
+ 543   4                       }while(k1==0);
+ 544   3                     if(nn<50)                                     //Èç¡°°´ÏÂ¡±¼ÆÊýÐ¡ÓÚÉè¶¨Öµ£¨¶Ì»÷µÄ×î´óÏÞÖÆÖµ£
+             -©
+ 545   3                     {
+ 546   4                          delay(30);                             //ÑÓÊ±£¨Ïû¶¶£©
+ 547   4                          do{                                      //¡°ÊÍ·Å¡±¼ÆÊýÆ÷¿ªÊ¼¼ÆÊý
+ 548   5                                mm++;
+ 549   5                                delay(10);
+ 550   5                            }while((mm<40)&&(k1==1));            //µ±³¬³öÉè¶¨Öµ»òÔÙ´ÎÓÐ¡°°´ÏÂ¡±ÊÂ¼þ·¢Éú£¬½áÊø¼ÆÊ
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 10  
+
+             -ý
+ 551   4                          delay(25);                             //ÑÓÊ±£¨Ïû¶¶£©
+ 552   4                          do{                                      //´ýµ½µÚ¶þ´ÎµÄ¡°°´ÏÂ¡±ÊÂ¼þ½áÊø
+ 553   5                                
+ 554   5                }while(k1==0);
+ 555   4                          if(mm<40)              //ÔÚÊÍ·ÅÆÚ¼äÌáÇ°½áÊøµÄÎªË«»÷£¬·ñÔòÎª¶Ì»÷
+ 556   4             {
+ 557   5            Key_Num=0;     //Ë«»÷   
+ 558   5      
+ 559   5              ShanShou=0;
+ 560   5            flag1=1;  
+ 561   5            GNselect=0;
+ 562   5            if(GN>23)
+ 563   5            {
+ 564   6              GN=GN-12;
+ 565   6            } 
+ 566   5            else if(GN>17)
+ 567   5            {
+ 568   6               GN=GN-16;
+ 569   6            }           
+ 570   5            if(GN==6||GN==7)   //¹¦ÄÜ7,8ÓÐÑ­»·´ÎÊý
+ 571   5            { 
+ 572   6               if(flag4==0)
+ 573   6               {
+ 574   7                 flag5=0;
+ 575   7                 flag4=1;
+ 576   7               }else if(flag4==1)
+ 577   6               {
+ 578   7                 GN=GN+16;
+ 579   7                 flag4=2;
+ 580   7               }else if(flag4==2)
+ 581   6               {
+ 582   7                  flag4=0;
+ 583   7                  flag5=1;
+ 584   7               }
+ 585   6               }else if(GN>1&&GN<6) //¹¦ÄÜ2-8 T2ÔÚÊý×éÖÐµÄÎ»ÖÃÊÇ£¨¹¦ÄÜºÅÂë+16£©
+ 586   5             {
+ 587   6                 if(flag==0)
+ 588   6               {
+ 589   7                 flag=1;
+ 590   7               }else if(flag)
+ 591   6               {
+ 592   7                 GN=GN+16;
+ 593   7                 flag=0;
+ 594   7               }
+ 595   6               }else if(GN>11&&GN<16)  //¹¦ÄÜ13-16 T2ÔÚÊý×éÖÐµÄÎ»ÖÃÊÇ £¨¹¦ÄÜºÅÂë+12£© 
+ 596   5             {
+ 597   6               if(flag==0)
+ 598   6               {
+ 599   7                  flag=1;
+ 600   7               }else if(flag)
+ 601   6               {
+ 602   7                 GN=GN+12;
+ 603   7                 flag=0;
+ 604   7               }    
+ 605   6             }
+ 606   5            }
+ 607   4            else
+ 608   4              {
+ 609   5              OUT=0;
+ 610   5              flag=0;
+ 611   5              flag5=0;
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 11  
+
+ 612   5                ShanShou=0;
+ 613   5                if(flag1==1)    //ÐÞ¸ÄºóÈ·¶¨
+ 614   5              { 
+ 615   6                flag1=0;
+ 616   6              GNchanged=0;
+ 617   6                ShanShou=1; 
+ 618   6              CycleN=0;                               
+ 619   6                
+ 620   6              if(GN>23)
+ 621   6              {
+ 622   7                GN=GN-12;
+ 623   7              } 
+ 624   6              else if(GN>17)
+ 625   6              {
+ 626   7                GN=GN-16;
+ 627   7              } 
+ 628   6              OUT=(GN+1)%2;
+ 629   6              if(GN>7)
+ 630   6              OUT=0;
+ 631   6              if(GN!=16&&GN!=17)   //¹¦ÄÜ17,18²»´¦Àí
+ 632   6              {
+ 633   7                dingshi=GNT[GN];
+ 634   7                if(GN>7)
+ 635   7                   biaozhi=0;
+ 636   7                else
+ 637   7                   biaozhi=1;       
+ 638   7                    yanshi=0;
+ 639   7                Write();
+ 640   7              }
+ 641   6              }else{
+ 642   6                 if(Key_Num==2&&yanshi)
+ 643   6               {
+ 644   7                GN--;
+ 645   7               }
+ 646   6                 if(yanshi)
+ 647   6                      if(GN>16)
+ 648   6                         GN=0;
+ 649   6                      else
+ 650   6                         GN++;        
+ 651   6                    if(GN==6||GN==7)
+ 652   6                    CN=GN-6;
+ 653   6                    GNchanged=1;
+ 654   6                    GNselect=0;
+ 655   6                          biaozhi=0; 
+ 656   6                        yanshi=1;
+ 657   6                if(GN==16||GN==17)
+ 658   6                {
+ 659   7                   Write();
+ 660   7                }                 
+ 661   6                 }
+ 662   5                      Key_Num=1;   //¶Ì»÷
+ 663   5            }
+ 664   4               }
+ 665   3               else
+ 666   3                     {
+ 667   4                          Key_Num=2;                               //¡±°´ÏÂ¡±¼ÆÊý´óÓÚÉè¶¨ÖµÎª³¤»÷
+ 668   4                if(visionflag==0)
+ 669   4                {
+ 670   5                  vision=1;
+ 671   5                  visionflag=1;
+ 672   5                }
+ 673   4                else
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 12  
+
+ 674   4                {
+ 675   5                  vision=0;
+ 676   5                  visionflag=0;
+ 677   5                }
+ 678   4                  
+ 679   4                     }
+ 680   3                }
+ 681   2          }
+ 682   1      }   
+ 683          
+ 684           void Write(){
+ 685   1      IapEraseSector(IAP_ADDRESS); //Erase current sector
+ 686   1      for (i=0; i<56; i++)
+ 687   1      {
+ 688   2      IapProgramByte(IAP_ADDRESS+i,GNT[i/2]>>8);
+ 689   2      IapProgramByte(IAP_ADDRESS+i+1, GNT[i/2]&0xff);
+ 690   2      i++;
+ 691   2      }
+ 692   1      IapProgramByte(IAP_ADDRESS+120, GN);
+ 693   1      IapProgramByte(IAP_ADDRESS+121,0);
+ 694   1      IapProgramByte(IAP_ADDRESS+122,CycleNum[0]>>8);
+ 695   1      IapProgramByte(IAP_ADDRESS+123,CycleNum[0]&0xff);
+ 696   1      IapProgramByte(IAP_ADDRESS+124,CycleNum[1]>>8);
+ 697   1      IapProgramByte(IAP_ADDRESS+125,CycleNum[1]&0xff);
+ 698   1      IapProgramByte(IAP_ADDRESS+126,vision);
+ 699   1      IapProgramByte(IAP_ADDRESS+127,on);
+ 700   1      }
+ 701          
+ 702            void outfuction()
+ 703            {
+ 704   1           ms05=0;
+ 705   1                dingshi--;
+ 706   1              if(dingshi==0)
+ 707   1              {
+ 708   2                 switch(GN)
+ 709   2                 {
+ 710   3                  case 0:
+ 711   3                              OUT=0;
+ 712   3                    biaozhi=0;                    
+ 713   3                              break;
+ 714   3                       case 1:
+ 715   3                            OUT=1;
+ 716   3                    biaozhi=0;
+ 717   3                            break;
+ 718   3                       case 2:
+ 719   3                        if(0==flag){
+ 720   4                        OUT=0;
+ 721   4                    dingshi=GNT[GN+16];
+ 722   4                    flag=1;
+ 723   4                    }else{
+ 724   4                    OUT=1;
+ 725   4                    flag=0;
+ 726   4                    biaozhi=0;
+ 727   4                    }
+ 728   3                          break;
+ 729   3                 case 3:
+ 730   3                          if(flag==0){
+ 731   4                        OUT=1;
+ 732   4                    dingshi=GNT[GN+16];
+ 733   4                    flag=1;
+ 734   4                    }else{
+ 735   4                    OUT=0;
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 13  
+
+ 736   4                    flag=0;
+ 737   4                    biaozhi=0;
+ 738   4                    }
+ 739   3                          break;
+ 740   3                case 5:
+ 741   3                            if(flag==0){
+ 742   4                        OUT=1;
+ 743   4                    dingshi=GNT[GN+16];
+ 744   4                    flag=1;
+ 745   4                    }else{
+ 746   4                    OUT=0;
+ 747   4                    dingshi=GNT[GN];
+ 748   4                    flag=0;
+ 749   4                    }
+ 750   3                          break;
+ 751   3                       case 4:
+ 752   3                        if(0==flag){
+ 753   4                        OUT=0;
+ 754   4                    dingshi=GNT[GN+16];
+ 755   4                    flag=1;
+ 756   4                    }else{
+ 757   4                    OUT=1;
+ 758   4                    dingshi=GNT[GN];
+ 759   4                    flag=0;
+ 760   4                    }
+ 761   3                          break;
+ 762   3                 case 7:
+ 763   3                          if(flag==0){
+ 764   4                        OUT=1;
+ 765   4                    dingshi=GNT[GN+16];
+ 766   4                    flag=1;
+ 767   4                    }else{
+ 768   4                    OUT=0;
+ 769   4                    dingshi=GNT[GN];
+ 770   4                    flag=0;
+ 771   4                    CycleN++;
+ 772   4                    if(CycleN==CycleNum[1]||CycleNum[1]==0){
+ 773   5                    CycleN=0;
+ 774   5                    biaozhi=0;
+ 775   5                    }
+ 776   4                    }
+ 777   3                          break;
+ 778   3                  case 6:
+ 779   3                              if(0==flag){
+ 780   4                        OUT=0;
+ 781   4                    dingshi=GNT[GN+16];
+ 782   4                    flag=1;
+ 783   4                    }else{
+ 784   4                    OUT=1;
+ 785   4                    dingshi=GNT[GN];
+ 786   4                    flag=0;
+ 787   4                    CycleN++;
+ 788   4                    if(CycleN==CycleNum[0]||CycleNum[0]==0){
+ 789   5                    CycleN=0;
+ 790   5                    biaozhi=0;
+ 791   5                    OUT=0;
+ 792   5                    }
+ 793   4                    }
+ 794   3                    break;
+ 795   3                   case 8:
+ 796   3                              OUT=0;
+ 797   3                    biaozhi=0;                    
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 14  
+
+ 798   3                              break;
+ 799   3                       case 9:
+ 800   3                            OUT=1;
+ 801   3                    biaozhi=0;
+ 802   3                            break;
+ 803   3                     
+ 804   3                       case 10:
+ 805   3                            OUT=0;
+ 806   3                    biaozhi=0;
+ 807   3                            break;
+ 808   3                 case 11:
+ 809   3                              OUT=1;
+ 810   3                    biaozhi=0;                    
+ 811   3                              break;
+ 812   3                      
+ 813   3                       case 12:
+ 814   3                            if(flag==0){
+ 815   4                        OUT=1;
+ 816   4                    dingshi=GNT[GN+12];
+ 817   4                    flag=1;
+ 818   4                    }else{
+ 819   4                    OUT=0;
+ 820   4                    flag=0;
+ 821   4                    biaozhi=0;
+ 822   4                    }
+ 823   3                          break;
+ 824   3                       case 13:
+ 825   3                        if(0==flag){
+ 826   4                        OUT=0;
+ 827   4                    dingshi=GNT[GN+12];
+ 828   4                    flag=1;
+ 829   4                    }else{
+ 830   4                    OUT=1;
+ 831   4                    flag=0;
+ 832   4                    biaozhi=0;
+ 833   4                    }
+ 834   3                          break;
+ 835   3                 case 14:
+ 836   3                          if(flag==0){
+ 837   4                        OUT=1;
+ 838   4                    dingshi=GNT[GN+12];
+ 839   4                    flag=1;
+ 840   4                    }else{
+ 841   4                    OUT=0;
+ 842   4                    flag=0;
+ 843   4                    biaozhi=0;
+ 844   4                    }
+ 845   3                          break;
+ 846   3                  case 15:
+ 847   3                              if(0==flag){
+ 848   4                        OUT=0;
+ 849   4                    dingshi=GNT[GN+12];
+ 850   4                    flag=1;
+ 851   4                    }else{
+ 852   4                    OUT=1;
+ 853   4                    flag=0;
+ 854   4                    biaozhi=0;
+ 855   4                    }
+ 856   3                    break;
+ 857   3                       default:
+ 858   3                             ;  
+ 859   3                  }              
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 15  
+
+ 860   2                 }
+ 861   1        }
+ 862          void IapIdle()
+ 863          {
+ 864   1      IAP_CONTR = 0; //Close IAP function
+ 865   1      IAP_CMD = 0; //Clear command to standby
+ 866   1      IAP_TRIG = 0; //Clear trigger register
+ 867   1      IAP_ADDRH = 0x80; //Data ptr point to non-EEPROM area
+ 868   1      IAP_ADDRL = 0; //Clear IAP address to prevent misuse
+ 869   1      }
+ 870          /*----------------------------
+ 871          Read one byte from ISP/IAP/EEPROM area
+ 872          Input: addr (ISP/IAP/EEPROM address)
+ 873          Output:Flash data
+ 874          ----------------------------*/
+ 875          uchar IapReadByte(uint addr)
+ 876          {
+ 877   1      uchar dat; //Data buffer
+ 878   1      IAP_CONTR = ENABLE_IAP; //Open IAP function, and set wait time
+ 879   1      IAP_CMD = CMD_READ; //Set ISP/IAP/EEPROM READ command
+ 880   1      IAP_ADDRL = addr; //Set ISP/IAP/EEPROM address low
+ 881   1      IAP_ADDRH = addr >> 8; //Set ISP/IAP/EEPROM address high
+ 882   1      IAP_TRIG = 0x5a; //Send trigger command1 (0x5a)
+ 883   1      IAP_TRIG = 0xa5; //Send trigger command2 (0xa5)
+ 884   1      _nop_(); //MCU will hold here until ISP/IAP/EEPROM
+ 885   1      //operation complete
+ 886   1      dat = IAP_DATA; //Read ISP/IAP/EEPROM data
+ 887   1      IapIdle(); //Close ISP/IAP/EEPROM function
+ 888   1      return dat; //Return Flash data
+ 889   1      }
+ 890          /*----------------------------
+ 891          Program one byte to ISP/IAP/EEPROM area
+ 892          Input: addr (ISP/IAP/EEPROM address)
+ 893          dat (ISP/IAP/EEPROM data)
+ 894          Output:-
+ 895          ----------------------------*/
+ 896          
+ 897          void IapProgramByte(uint addr, uchar dat)
+ 898          {
+ 899   1      IAP_CONTR = ENABLE_IAP; //Open IAP function, and set wait time
+ 900   1      IAP_CMD = CMD_PROGRAM; //Set ISP/IAP/EEPROM PROGRAM command
+ 901   1      IAP_ADDRL = addr; //Set ISP/IAP/EEPROM address low
+ 902   1      IAP_ADDRH = addr >> 8; //Set ISP/IAP/EEPROM address high
+ 903   1      IAP_DATA = dat; //Write ISP/IAP/EEPROM data
+ 904   1      IAP_TRIG = 0x5a; //Send trigger command1 (0x5a)
+ 905   1      IAP_TRIG = 0xa5; //Send trigger command2 (0xa5)
+ 906   1      _nop_(); //MCU will hold here until ISP/IAP/EEPROM
+ 907   1      //operation complete
+ 908   1      IapIdle();
+ 909   1      }
+ 910          /*----------------------------
+ 911          Erase one sector area
+ 912          Input: addr (ISP/IAP/EEPROM address)
+ 913          Output:-
+ 914          ----------------------------*/
+ 915          void IapEraseSector(uint addr)
+ 916          {
+ 917   1      IAP_CONTR = ENABLE_IAP; //Open IAP function, and set wait time
+ 918   1      IAP_CMD = CMD_ERASE; //Set ISP/IAP/EEPROM ERASE command
+ 919   1      IAP_ADDRL = addr; //Set ISP/IAP/EEPROM address low
+ 920   1      IAP_ADDRH = addr >> 8; //Set ISP/IAP/EEPROM address high
+ 921   1      IAP_TRIG = 0x5a; //Send trigger command1 (0x5a)
+C51 COMPILER V9.51   EIGHTEEN                                                              03/25/2014 09:27:42 PAGE 16  
+
+ 922   1      IAP_TRIG = 0xa5; //Send trigger command2 (0xa5)
+ 923   1      _nop_(); //MCU will hold here until ISP/IAP/EEPROM
+ 924   1      //operation complete
+ 925   1      IapIdle();
+ 926   1      }      
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2827    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     92       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =     16    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
